@@ -1,0 +1,23 @@
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.opendb
+TestResults/
+[Bb]uild/
+[Rr]elease/
+[Dd]ebug/
+packages/
+*.nupkg
+
+# Project artifacts
+*.dxf
+*.3dr
+*.ipt
+*.iam
+*.idw
+logs/
+*.log
+*.tmp
+*.bak
