@@ -42,6 +42,7 @@ Runs via:
    └─ latest_obj.js
 ```
 
+
 - ![Image of PanelSync Folder](Resources/FolderStructure.png)
 
 ---
@@ -83,11 +84,16 @@ Runs via:
    ```
 
    4. Start Inventor → go to **Add-In Manager** → check if PanelSync is added.  
+   
    - ![PanelSync added to Inventor addins](Resources/InvAddinCheck.png)  
+
+   5. You'll also see **Export OBJ → 3DR** ribbon button in Inventor. 
+
+    - ![PanelSync added to Inventor addins](Resources/InventorAddinButton.png)
 
    ✅ On first run, the add-in creates the `PanelSyncHot` folder structure, logs, and seeds scripts.
 
----
+
 
 3. **Set up 3DR Favorites** (first time only)  
    - Open Cyclone 3DR → `Settings → Favorite Scripts`.  
@@ -116,8 +122,7 @@ Runs via:
    From now on:  
    - Every time you open 3DR, the favorite is already available.  
    - After you export OBJ from Inventor, just click the ⭐ **PanelSync Import OBJ** favorite inside 3DR to import meshes.
-
----
+   
 
 4. **Use the loop:**  
    - In **3DR**: Run **ExportToInventor.js** → IGES exported → auto-imported into Inventor.  
@@ -145,15 +150,18 @@ Runs via:
 ## 🪪 Troubleshooting
 
 - **Nothing imports to Inventor:**  
-  Check `PanelSyncHot\logs\inventor-addin.log`. Ensure add-in is loaded.  
+  Check `PanelSyncHot\logs\inventor-addin.log`. Ensure add-in is loaded.
+  Check 3DR script console for error logs
 
 - **OBJ not created:**  
   Make sure you have a Part document open with solid bodies.  
 
 - **3DR didn’t import OBJ:**  
   Run `latest_obj.js` manually — check if `latest.obj` exists in the exports folder.  
+  Check 3DR script console for error logs
 
-- **Every time you solve issue** tell how you here (or write to me) so it’s helpful to all.
+- **Every time you solve issue** tell how you solved (or write to me) so it’s helpful to all.
+
 ---
 
 ## 🗺️ Conceptual workflow

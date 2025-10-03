@@ -1,4 +1,4 @@
-﻿//[10/02/2025]:Raksha- Inventor Add-in with stable Export OBJ button + script seeding
+﻿//[10/03/2025]:Raksha- Inventor Add-in (lightweight) with IGES watcher, Export OBJ button, and script seeding
 using Inventor;
 using System;
 using System.IO;
@@ -14,41 +14,46 @@ namespace PanelSync.InventorAddIn
     public class AddInServer : ApplicationAddInServer
     {
         private Inventor.Application _inv;
-        private JobWatcher _watcher;
+        private FileSystemWatcher _igesWatcher;  // [10/03/2025]:Raksha- Only need IGES watcher now
         private ButtonDefinition _exportObjBtn;
 
         private string _hotRoot;
         private string _objDir;
         private string _igesDir;
         private string _scriptsDir;
+        private string _logsDir;
 
         public void Activate(ApplicationAddInSite addInSiteObject, bool firstTime)
         {
             _inv = addInSiteObject.Application;
 
-            // 🔄 hot-folder root
+            // [10/03/2025]:Raksha- Initialize hot-folder structure
             var desktop = System.Environment.GetFolderPath(System.Environment.SpecialFolder.UserProfile);
             _hotRoot = System.IO.Path.Combine(desktop, "OneDrive", "Desktop", "PanelSyncHot");
-            var logsDir = System.IO.Path.Combine(_hotRoot, "logs");
+            _logsDir = System.IO.Path.Combine(_hotRoot, "logs");
             _objDir = System.IO.Path.Combine(_hotRoot, "Inventor", "exports", "obj");
             _igesDir = System.IO.Path.Combine(_hotRoot, "3DR", "exports", "iges");
             _scriptsDir = System.IO.Path.Combine(_hotRoot, "scripts");
 
-            System.IO.Directory.CreateDirectory(logsDir);
+            System.IO.Directory.CreateDirectory(_logsDir);
             System.IO.Directory.CreateDirectory(_objDir);
             System.IO.Directory.CreateDirectory(_igesDir);
             System.IO.Directory.CreateDirectory(_scriptsDir);
 
-            var logPath = System.IO.Path.Combine(logsDir, "inventor-addin.log");
+            var logPath = System.IO.Path.Combine(_logsDir, "inventor-addin.log");
             var logger = new SimpleFileLogger(logPath);
 
-            _watcher = new JobWatcher(_inv, logger);
             logger.Info("Inventor Add-in activated. Watching hot-folder at " + _hotRoot);
 
-            // ✅ Seed scripts into scripts folder
+            // [10/03/2025]:Raksha- Watch IGES folder (auto-import into Inventor)
+            _igesWatcher = new FileSystemWatcher(_igesDir, "*.igs");
+            _igesWatcher.Created += (s, e) => OnNewIges(e.FullPath, logger);
+            _igesWatcher.EnableRaisingEvents = true;
+
+            // [10/03/2025]:Raksha- Seed JS scripts (if missing)
             SeedScripts(logger);
 
-            // ✅ Create ribbon button
+            // [10/03/2025]:Raksha- Add Export OBJ button to Inventor ribbon
             CreateUI();
         }
 
@@ -57,20 +62,15 @@ namespace PanelSync.InventorAddIn
             try
             {
                 // === ExportToInventor.js ===
-                // === ExportToInventor.js ===
                 var exportJsPath = System.IO.Path.Combine(_scriptsDir, "ExportToInventor.js");
                 if (!System.IO.File.Exists(exportJsPath))
                 {
-                    var exportJs = @"//[10/01/2025]:Raksha- Export visible-only geometry from OPEN 3DR project to IGES hot-folder
-
+                    var exportJs = @"//[10/03/2025]:Raksha- Export visible-only geometry from OPEN 3DR project to IGES hot-folder
 function log(m) { try { print(m); } catch (_) {} }
 function j(o) { try { return JSON.stringify(o); } catch (_) { return String(o); } }
-
 var stamp = new Date().toISOString().replace(/[-:T.Z]/g, '');
 var out = '" + _igesDir.Replace("\\", "/") + @"/exp_' + stamp + '.igs';
-
 try {
-    // Collect visible objects from the currently open project
     var comps = SComp.All(SComp.VISIBLE_ONLY);
     var picked = [];
     for (var i = 0; i < comps.length; i++) {
@@ -80,17 +80,12 @@ try {
             picked.push(comps[i]);
         }
     }
-
     if (picked.length === 0) throw new Error('No visible geometry found.');
-
-    // Convert
     var shapes = [];
     for (var k = 0; k < picked.length; k++) {
-        var obj = picked[k];
-        var s = obj.toString();
-
-        if (s.indexOf('Multiline') >= 0) {
-            var n = obj.GetNumber ? obj.GetNumber() : 0;
+        var obj = picked[k]; var s = obj.toString();
+        if (s.indexOf('Multiline') >= 0 && obj.GetNumber) {
+            var n = obj.GetNumber();
             for (var j = 0; j < n - 1; j++) {
                 var p1 = obj.GetPoint(j);
                 var p2 = obj.GetPoint(j + 1);
@@ -103,58 +98,82 @@ try {
             if (conv && conv.ErrorCode === 0 && conv.Shape) shapes.push(conv.Shape);
         }
     }
-
     if (shapes.length === 0) throw new Error('Nothing convertible to IGES.');
-
-    // Export into fixed hot-folder
-    var mtx = SMatrix.New(); 
-    mtx.InitIdentity();
-
+    var mtx = SMatrix.New(); mtx.InitIdentity();
     log('Exporting IGES → ' + out);
     var rc = SCADUtil.Export(out, shapes, mtx);
     if (!rc || rc.ErrorCode !== 0) throw new Error('Export failed: ' + j(rc));
-
     log('✅ IGES exported: ' + out);
-}
-catch (err) {
-    log('ERROR: ' + err);
-    throw err;
-}";
+} catch (err) { log('ERROR: ' + err); throw err; }";
                     System.IO.File.WriteAllText(exportJsPath, exportJs);
                     logger.Info("Seeded ExportToInventor.js into scripts folder");
                 }
+
                 // === latest_obj.js ===
                 var objJsPath = System.IO.Path.Combine(_scriptsDir, "latest_obj.js");
                 if (!System.IO.File.Exists(objJsPath))
                 {
-                    var objJs = @"//[10/02/2025]:Raksha- Import latest.obj into OPEN 3DR project
+                    var objJs = @"//[10/03/2025]:Raksha- Import latest.obj into OPEN 3DR project
 var objPath = '" + System.IO.Path.Combine(_objDir, "latest.obj").Replace("\\", "/") + @"';
-
 function log(m) { try { print(m); } catch (_) { } }
 if (!objPath) { throw 'objPath is missing!'; }
-
 log('Importing OBJ: ' + objPath);
 var rc = SPoly.FromFile(objPath);
 if (!rc || rc.ErrorCode !== 0) { throw 'SPoly.FromFile failed: ' + JSON.stringify(rc); }
 if (!rc.PolyTbl || rc.PolyTbl.length === 0) { throw 'No meshes found in OBJ'; }
-
 for (var i = 0; i < rc.PolyTbl.length; i++) {
     var mesh = rc.PolyTbl[i];
     mesh.AddToDoc();
     log('Added mesh: ' + mesh.GetName() + ' (' + i + ')');
 }
-
 try { var vs = SViewSet.New(true); vs.Update(true); } catch(_) {}
 log('✅ Imported OBJ and updated view.');";
                     System.IO.File.WriteAllText(objJsPath, objJs);
                     logger.Info("Seeded latest_obj.js into scripts folder");
                 }
-
-
             }
             catch (Exception ex)
             {
                 logger.Error("Failed seeding scripts", ex);
+            }
+        }
+
+        // === IGES auto-import handler ===
+        private void OnNewIges(string igesPath, ILog logger)
+        {
+            try
+            {
+                logger.Info("Detected new IGES file: " + igesPath);
+
+                // Wait briefly to ensure file stability
+                System.Threading.Thread.Sleep(1000);
+
+                PartDocument doc = null;
+                if (_inv.ActiveDocument is PartDocument activePart)
+                {
+                    doc = activePart;
+                }
+                else
+                {
+                    var iptPath = System.IO.Path.Combine(_hotRoot, "Inventor", "projects", "latest.ipt");
+                    doc = (PartDocument)_inv.Documents.Add(
+                        DocumentTypeEnum.kPartDocumentObject,
+                        _inv.FileManager.GetTemplateFile(DocumentTypeEnum.kPartDocumentObject));
+                    doc.SaveAs(iptPath, false);
+                }
+
+                var compDef = doc.ComponentDefinition;
+                var importedDef = compDef.ReferenceComponents.ImportedComponents.CreateDefinition(igesPath);
+
+                doc.UnitsOfMeasure.LengthUnits = UnitsTypeEnum.kMillimeterLengthUnits;
+                compDef.ReferenceComponents.ImportedComponents.Add(importedDef);
+                doc.Save();
+
+                logger.Info("✅ IGES auto-import complete: " + System.IO.Path.GetFileName(igesPath));
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Error during IGES auto-import", ex);
             }
         }
 
@@ -165,9 +184,6 @@ log('✅ Imported OBJ and updated view.');";
             var controlDefs = cmdMgr.ControlDefinitions;
 
             var asm = Assembly.GetExecutingAssembly();
-
-            // resource name is <DefaultNamespace>.<Folder>.<FileName>
-            // In your case: PanelSync.InventorAddIn.Resources.OBJIcon.png
             using (var bmp = new Bitmap(asm.GetManifestResourceStream("PanelSync.InventorAddIn.Resources.OBJIcon.png")))
             {
                 var icon16 = PictureDispConverter.ToIPictureDisp(new Bitmap(bmp, new Size(16, 16)));
@@ -186,7 +202,6 @@ log('✅ Imported OBJ and updated view.');";
 
                 _exportObjBtn.OnExecute += ExportObjBtn_OnExecute;
 
-                // Add to ribbon (Part environment, Tools tab)
                 Ribbon partRibbon = _inv.UserInterfaceManager.Ribbons["Part"];
                 RibbonTab toolsTab = partRibbon.RibbonTabs["id_TabTools"];
                 RibbonPanel panel = toolsTab.RibbonPanels.Add(
@@ -251,14 +266,15 @@ log('✅ Imported OBJ and updated view.');";
 
         public void Deactivate()
         {
-            try { _watcher?.Dispose(); } catch { }
+            try { _igesWatcher?.Dispose(); } catch { }
             _exportObjBtn?.Delete();
-            _inv = null; _watcher = null;
+            _inv = null; _igesWatcher = null;
         }
 
         public void ExecuteCommand(int commandID) { }
         public object Automation => null;
 
+        // [10/03/2025]:Raksha- Helper to convert .NET Bitmap → Inventor COM icon
         public class PictureDispConverter : AxHost
         {
             private PictureDispConverter() : base("") { }
@@ -267,6 +283,5 @@ log('✅ Imported OBJ and updated view.');";
                 return (stdole.IPictureDisp)AxHost.GetIPictureDispFromPicture(image);
             }
         }
-
     }
 }
