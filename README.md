@@ -170,6 +170,20 @@ Runs via:
 
 ---
 
+---
+
+## 🆕 Updates (October 2025)
+
+- **Assembly (.IAM) support:**  
+  PanelSync now detects and exports geometry from both `.ipt` and `.iam` files.  
+  The **Export OBJ → 3DR** ribbon button appears in assemblies as well.
+
+- **Clipping Filter Index Exclusion:**  
+  Automatically skips geometry filtered out by the active 3DR clipping filter index.
+
+---
+
+
 ## 📄 License
 
 MIT license.
